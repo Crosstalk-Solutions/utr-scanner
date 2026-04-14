@@ -23,8 +23,8 @@ scanner_state = {
 
 def load_config():
     config_paths = [
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml"),
         "/etc/utr-scanner/config.yaml",
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml"),
     ]
     for path in config_paths:
         if os.path.exists(path):
