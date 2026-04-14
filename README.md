@@ -2,22 +2,31 @@
 
 A lightweight Raspberry Pi tool that continuously monitors a WiFi SSID's security level and alerts you if it drops from WPA2/WPA3 to an open or insecure state.
 
-## Why?
+## Why Does This Exist?
 
 There's a [reported bug](https://community.ui.com/questions/UniFi-Travel-Router-Unsecure-WiFi/83fa9d26-d929-4623-aba8-90048eb813fe) in the UniFi Travel Router (UTR) where the device periodically broadcasts a configured WPA2 network as an **open, unsecured network** — giving anyone in range direct access to your home network via the Teleport tunnel.
 
-Multiple users have confirmed the issue. It appears intermittent and difficult to reproduce, which makes it even more dangerous. This tool sits on your LAN and watches for exactly this scenario.
+Multiple users have confirmed the issue. It appears intermittent and difficult to reproduce, which makes it even more dangerous — it seems to happen most often when the UTR is connected to hotel WiFi, not easily reproduced at home. This tool sits next to your UTR and watches for exactly this scenario.
 
 ## What It Does
 
 - Scans for your target SSID once per minute (configurable)
-- Logs the security type (WPA2, WPA3, WEP, Open) with timestamp and signal strength
+- Logs the detected security type (WPA2, WPA3, WEP, Open) with timestamp and signal strength
 - Alerts immediately if security drops below expected level
-- Provides a clean web dashboard at `http://<pi-ip>:8585`
-- Shows a 24-hour security timeline so you can spot intermittent issues
+- Provides a web dashboard at `http://<pi-ip>:8585` with live status, scan log, and 24-hour timeline
 - Supports alerts via webhook (Slack/Discord), Pushover, or audible beep
+- Starts automatically on boot — plug in the Pi and forget about it
 
-## Quick Install (Raspberry Pi)
+## Requirements
+
+- **Raspberry Pi** (any model with WiFi — tested on Pi 5 with Debian Trixie/Bookworm)
+- **Raspberry Pi OS** (Bookworm or later recommended)
+- **Python 3.9+** (installed by the setup script if missing)
+- **A WiFi adapter** that can scan (the built-in one works fine)
+
+> **Tip:** If you're using the Pi's built-in WiFi for network connectivity, consider adding a USB WiFi adapter dedicated to scanning. This avoids brief connectivity interruptions during scans. If the Pi is on Ethernet, the built-in WiFi works great as a dedicated scanner.
+
+## Quick Install
 
 ```bash
 git clone https://github.com/Crosstalk-Solutions/utr-scanner.git /opt/utr-scanner
@@ -25,22 +34,34 @@ cd /opt/utr-scanner
 sudo bash install.sh
 ```
 
-Then:
+Then start the service:
 
-1. Edit your config:
-   ```bash
-   sudo nano /etc/utr-scanner/config.yaml
-   ```
-2. Set your `target_ssid` and `expected_security`
-3. Start the scanner:
-   ```bash
-   sudo systemctl start utr-scanner
-   ```
-4. Open the dashboard: `http://<your-pi-ip>:8585`
+```bash
+sudo systemctl start utr-scanner
+```
 
-## Configuration
+Open the dashboard at `http://<your-pi-ip>:8585` and click **Configure SSID** to select the network you want to monitor.
 
-Edit `/etc/utr-scanner/config.yaml`:
+That's it. The scanner will run on every boot automatically.
+
+## Web-Based Setup
+
+On first launch, the dashboard will prompt you to configure your target SSID. Click **Settings** (or navigate to `http://<pi-ip>:8585/setup`) to:
+
+1. **Scan for nearby networks** — the Pi scans for all visible SSIDs and shows them with signal strength and current security type
+2. **Select your network** — click the SSID you want to monitor, or type it manually
+3. **Set expected security** — choose WPA2, WPA3, or WPA2/WPA3
+4. **Save** — settings are applied immediately, no restart needed
+
+Settings persist across reboots.
+
+## Manual Configuration
+
+You can also edit the config file directly:
+
+```bash
+sudo nano /etc/utr-scanner/config.yaml
+```
 
 ```yaml
 target_ssid: "MyNetwork"        # The SSID to monitor
@@ -60,23 +81,22 @@ alerts:
   #   api_token: "your-api-token"
 ```
 
-## Requirements
+After editing, restart the service:
 
-- Raspberry Pi (any model with WiFi)
-- Raspberry Pi OS (Bookworm or later recommended)
-- Python 3.9+
-- A WiFi adapter that can scan (the built-in one works)
-
-**Tip:** If you're using the Pi's WiFi for network connectivity, consider adding a USB WiFi adapter dedicated to scanning. This avoids brief connectivity interruptions during scans.
+```bash
+sudo systemctl restart utr-scanner
+```
 
 ## Dashboard
 
-The web dashboard shows:
+The web dashboard at `http://<pi-ip>:8585` shows:
 
-- **Live status** — current security state with a green/red indicator
-- **Scan log** — timestamped history of every scan with security type and signal strength
+- **Live status** — green when secure, red with a pulsing alert when insecure
+- **Scan log** — timestamped history of every scan with security type and signal strength, filterable to alerts only
 - **24-hour timeline** — visual bar showing security state over time (green = secure, red = insecure, yellow = SSID not found)
-- **Active alerts** — dismissable alerts when insecure state is detected
+- **Active alerts** — dismissable alerts when an insecure state is detected
+
+The dashboard auto-refreshes every 10 seconds.
 
 ## Managing the Service
 
@@ -87,6 +107,19 @@ sudo systemctl restart utr-scanner  # Restart
 sudo systemctl status utr-scanner   # Status
 sudo journalctl -u utr-scanner -f   # Live logs
 ```
+
+## How It Works
+
+1. The scanner runs `iw dev wlan0 scan` on the configured interval (default: 60 seconds)
+2. It parses the scan output to determine each network's security type (RSN = WPA2, SAE = WPA3, etc.)
+3. It looks for the target SSID and compares the detected security against the expected level
+4. Every scan is logged to a local SQLite database with timestamp, security type, and signal strength
+5. If security doesn't match (Open, WEP, or downgraded) — alerts fire immediately
+
+The scanner handles common Raspberry Pi quirks automatically:
+- **RF-kill** — WiFi is often soft-blocked after boot; the scanner unblocks it
+- **Interface down** — wlan0 starts in DOWN state; the scanner brings it up and waits for it to be ready
+- **`iw` path** — found at `/usr/sbin/iw` on Pi OS, auto-discovered
 
 ## Uninstall
 

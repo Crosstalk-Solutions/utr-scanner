@@ -28,7 +28,7 @@ fi
 
 echo "[1/6] Installing system dependencies..."
 apt-get update -qq
-apt-get install -y -qq python3 python3-pip python3-venv iw wireless-tools git > /dev/null
+apt-get install -y -qq python3 python3-pip python3-venv iw wireless-tools rfkill git > /dev/null
 
 echo "[2/6] Setting up UTR Scanner..."
 if [[ -d "$APP_DIR" ]] && [[ -d "$APP_DIR/.git" ]]; then
@@ -47,26 +47,21 @@ python3 -m venv venv
 ./venv/bin/pip install --quiet --upgrade pip
 ./venv/bin/pip install --quiet -r requirements.txt
 
-echo "[4/6] Setting up configuration..."
+echo "[4/7] Unblocking WiFi..."
+rfkill unblock wifi 2>/dev/null || true
+
+echo "[5/7] Setting up configuration..."
 if [[ ! -f /etc/utr-scanner/config.yaml ]]; then
     mkdir -p /etc/utr-scanner
     cp config.yaml /etc/utr-scanner/config.yaml
-    echo ""
-    echo "  *** IMPORTANT: Edit your config before starting! ***"
-    echo "  sudo nano /etc/utr-scanner/config.yaml"
-    echo ""
-    echo "  At minimum, set:"
-    echo "    target_ssid: \"YourNetworkName\""
-    echo "    expected_security: \"WPA2\""
-    echo ""
 else
     echo "  Config already exists at /etc/utr-scanner/config.yaml"
 fi
 
-echo "[5/6] Creating data directory..."
+echo "[6/7] Creating data directory..."
 mkdir -p "$APP_DIR/data"
 
-echo "[6/6] Installing systemd service..."
+echo "[7/7] Installing systemd service..."
 cat > /etc/systemd/system/${SERVICE_NAME}.service << 'UNIT'
 [Unit]
 Description=UTR Scanner - WiFi Security Monitor
@@ -95,14 +90,18 @@ echo "  Installation complete!"
 echo "==============================="
 echo ""
 echo "Next steps:"
-echo "  1. Edit your config:"
-echo "     sudo nano /etc/utr-scanner/config.yaml"
 echo ""
-echo "  2. Start the scanner:"
+echo "  1. Start the scanner:"
 echo "     sudo systemctl start utr-scanner"
 echo ""
-echo "  3. Open the dashboard:"
+echo "  2. Open the dashboard and configure your SSID:"
 echo "     http://$(hostname -I | awk '{print $1}'):8585"
+echo ""
+echo "  The web UI will walk you through selecting the"
+echo "  network you want to monitor. No need to edit"
+echo "  config files manually."
+echo ""
+echo "The scanner starts automatically on every boot."
 echo ""
 echo "Useful commands:"
 echo "  sudo systemctl status utr-scanner   # Check status"
