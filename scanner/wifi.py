@@ -27,18 +27,35 @@ IW = _find_iw()
 
 
 def _ensure_interface_up(interface):
-    """Bring the WiFi interface up if it's down."""
+    """Bring the WiFi interface up if it's down, and wait until it's ready."""
+    import time
     try:
         result = subprocess.run(
             ["ip", "link", "show", interface],
             capture_output=True, text=True, timeout=5,
         )
         if "state DOWN" in result.stdout or "state UNKNOWN" in result.stdout:
+            # Unblock RF-kill first — Pi WiFi is often soft-blocked on boot
+            subprocess.run(
+                ["sudo", "rfkill", "unblock", "wifi"],
+                capture_output=True, timeout=5,
+            )
             logger.info("Bringing %s up", interface)
             subprocess.run(
                 ["sudo", "ip", "link", "set", interface, "up"],
                 capture_output=True, timeout=10,
             )
+            # Wait for interface to be ready — can take a few seconds on Pi
+            for _ in range(10):
+                time.sleep(1)
+                check = subprocess.run(
+                    ["ip", "link", "show", interface],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if "DOWN" not in check.stdout:
+                    logger.info("%s is up", interface)
+                    return
+            logger.warning("%s may not be fully up yet, attempting scan anyway", interface)
     except Exception as e:
         logger.warning("Could not check/bring up %s: %s", interface, e)
 
