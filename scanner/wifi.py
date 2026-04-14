@@ -53,29 +53,28 @@ def scan_wifi(interface="wlan0"):
     try:
         _ensure_interface_up(interface)
 
-        # Trigger a fresh scan
-        subprocess.run(
-            ["sudo", IW, "dev", interface, "scan", "trigger"],
-            capture_output=True, timeout=10,
-        )
-
+        # Use a blocking scan - this triggers a fresh scan and waits for results
         result = subprocess.run(
-            ["sudo", IW, "dev", interface, "scan", "dump"],
+            ["sudo", IW, "dev", interface, "scan"],
             capture_output=True, text=True, timeout=30,
         )
 
-        if result.returncode != 0:
-            # Fallback: try a blocking scan
+        if result.returncode != 0 and "busy" in result.stderr.lower():
+            # Interface busy (another scan in progress) - wait and use dump
+            logger.debug("Scan busy, waiting for cached results...")
+            import time
+            time.sleep(3)
             result = subprocess.run(
-                ["sudo", IW, "dev", interface, "scan"],
+                ["sudo", IW, "dev", interface, "scan", "dump"],
                 capture_output=True, text=True, timeout=30,
             )
 
         if result.returncode != 0:
-            logger.error("iw scan failed: %s", result.stderr.strip())
+            logger.error("iw scan failed (rc=%d): %s", result.returncode, result.stderr.strip())
             return networks
 
         networks = _parse_iw_output(result.stdout)
+        logger.debug("Scan found %d networks", len(networks))
 
     except subprocess.TimeoutExpired:
         logger.error("WiFi scan timed out")
