@@ -1,8 +1,46 @@
+import shutil
 import subprocess
 import re
 import logging
 
 logger = logging.getLogger("utr-scanner")
+
+
+def _find_iw():
+    """Find the iw binary, checking common sbin paths."""
+    path = shutil.which("iw")
+    if path:
+        return path
+    for candidate in ("/usr/sbin/iw", "/sbin/iw"):
+        try:
+            result = subprocess.run(
+                [candidate, "--version"], capture_output=True, timeout=5,
+            )
+            if result.returncode == 0:
+                return candidate
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return "iw"
+
+
+IW = _find_iw()
+
+
+def _ensure_interface_up(interface):
+    """Bring the WiFi interface up if it's down."""
+    try:
+        result = subprocess.run(
+            ["ip", "link", "show", interface],
+            capture_output=True, text=True, timeout=5,
+        )
+        if "state DOWN" in result.stdout or "state UNKNOWN" in result.stdout:
+            logger.info("Bringing %s up", interface)
+            subprocess.run(
+                ["sudo", "ip", "link", "set", interface, "up"],
+                capture_output=True, timeout=10,
+            )
+    except Exception as e:
+        logger.warning("Could not check/bring up %s: %s", interface, e)
 
 
 def scan_wifi(interface="wlan0"):
@@ -13,22 +51,23 @@ def scan_wifi(interface="wlan0"):
     networks = []
 
     try:
+        _ensure_interface_up(interface)
+
         # Trigger a fresh scan
         subprocess.run(
-            ["sudo", "iw", "dev", interface, "scan", "trigger"],
+            ["sudo", IW, "dev", interface, "scan", "trigger"],
             capture_output=True, timeout=10,
         )
-        # Brief pause handled by caller or iw itself
 
         result = subprocess.run(
-            ["sudo", "iw", "dev", interface, "scan", "dump"],
+            ["sudo", IW, "dev", interface, "scan", "dump"],
             capture_output=True, text=True, timeout=30,
         )
 
         if result.returncode != 0:
             # Fallback: try a blocking scan
             result = subprocess.run(
-                ["sudo", "iw", "dev", interface, "scan"],
+                ["sudo", IW, "dev", interface, "scan"],
                 capture_output=True, text=True, timeout=30,
             )
 

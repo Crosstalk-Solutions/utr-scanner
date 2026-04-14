@@ -30,11 +30,13 @@ echo "[1/6] Installing system dependencies..."
 apt-get update -qq
 apt-get install -y -qq python3 python3-pip python3-venv iw wireless-tools git > /dev/null
 
-echo "[2/6] Cloning UTR Scanner..."
-if [[ -d "$APP_DIR" ]]; then
-    echo "  Existing installation found, updating..."
+echo "[2/6] Setting up UTR Scanner..."
+if [[ -d "$APP_DIR" ]] && [[ -d "$APP_DIR/.git" ]]; then
+    echo "  Existing git installation found, updating..."
     cd "$APP_DIR"
     git pull --quiet
+elif [[ -d "$APP_DIR" ]] && [[ -f "$APP_DIR/requirements.txt" ]]; then
+    echo "  Existing installation found (manual copy), using as-is..."
 else
     git clone --quiet "$REPO" "$APP_DIR"
 fi

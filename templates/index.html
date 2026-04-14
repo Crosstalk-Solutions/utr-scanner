@@ -9,9 +9,23 @@
 <body>
     <div class="container">
         <header>
-            <h1>UTR Scanner</h1>
-            <p class="subtitle">WiFi Security Monitor</p>
+            <div class="header-row">
+                <div>
+                    <h1>UTR Scanner</h1>
+                    <p class="subtitle">WiFi Security Monitor</p>
+                </div>
+                <a href="/setup" class="btn btn-sm">Settings</a>
+            </div>
         </header>
+
+        {% if needs_setup %}
+        <div class="setup-banner">
+            <div class="setup-banner-text">
+                <strong>Setup Required</strong> &mdash; Select the SSID you want to monitor to get started.
+            </div>
+            <a href="/setup" class="btn btn-primary">Configure SSID</a>
+        </div>
+        {% endif %}
 
         <div class="status-card" id="status-card">
             <div class="status-indicator" id="status-indicator">
@@ -240,6 +254,7 @@
                     'scanning': 'Scanning...',
                     'running': 'Running',
                     'starting': 'Starting...',
+                    'needs_setup': 'Setup Required',
                     'error': 'Error',
                 };
                 text.textContent = statusLabels[state.status] || state.status;

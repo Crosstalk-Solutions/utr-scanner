@@ -59,18 +59,21 @@ def is_security_ok(actual, expected):
 
 def scan_loop(config):
     """Main scanning loop - runs in a background thread."""
-    interface = config.get("wifi_interface", "wlan0")
-    target = config["target_ssid"]
-    expected = config["expected_security"]
-    interval = config.get("scan_interval", 60)
-
-    logger.info(
-        "Starting scan loop: SSID=%s, expected=%s, interface=%s, interval=%ds",
-        target, expected, interface, interval,
-    )
+    logger.info("Starting scan loop")
     scanner_state["status"] = "running"
 
     while True:
+        # Re-read from config dict each cycle so web UI changes take effect
+        interface = config.get("wifi_interface", "wlan0")
+        target = config.get("target_ssid", "")
+        expected = config.get("expected_security", "WPA2")
+        interval = config.get("scan_interval", 60)
+
+        if not target or target == "MyNetwork":
+            scanner_state["status"] = "needs_setup"
+            time.sleep(interval)
+            continue
+
         try:
             networks = scan_wifi(interface)
             result = find_target_ssid(networks, target)

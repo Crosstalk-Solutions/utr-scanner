@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UTR Scanner - Setup</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UTR Scanner</h1>
+            <p class="subtitle">WiFi Security Monitor &mdash; Setup</p>
+        </header>
+
+        <div class="setup-card">
+            <h2>Select Your Network</h2>
+            <p class="setup-desc">Choose the SSID you want to monitor. The scanner will check its security level every scan cycle and alert you if it drops to open or insecure.</p>
+
+            <div class="scan-section">
+                <div class="scan-header">
+                    <h3>Nearby Networks</h3>
+                    <button class="btn" id="btn-scan" onclick="scanNetworks()">Scan for Networks</button>
+                </div>
+                <div id="network-list" class="network-list">
+                    <div class="network-list-empty">Click "Scan for Networks" to discover nearby SSIDs</div>
+                </div>
+            </div>
+
+            <div class="manual-section">
+                <h3>Or Enter Manually</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ssid-input">SSID</label>
+                        <input type="text" id="ssid-input" placeholder="Enter network name" value="{{ config.target_ssid if config.target_ssid != 'MyNetwork' else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="security-select">Expected Security</label>
+                        <select id="security-select">
+                            <option value="WPA2" {{ 'selected' if config.expected_security == 'WPA2' else '' }}>WPA2</option>
+                            <option value="WPA3" {{ 'selected' if config.expected_security == 'WPA3' else '' }}>WPA3</option>
+                            <option value="WPA2/WPA3" {{ 'selected' if config.expected_security == 'WPA2/WPA3' else '' }}>WPA2/WPA3</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="interval-input">Scan Interval (seconds)</label>
+                        <input type="number" id="interval-input" value="{{ config.scan_interval or 60 }}" min="10" max="3600">
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-actions">
+                <button class="btn btn-primary" id="btn-save" onclick="saveConfig()">Save &amp; Start Monitoring</button>
+                <a href="/" class="btn">Cancel</a>
+            </div>
+
+            <div id="save-message" class="save-message" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let scanning = false;
+
+        async function scanNetworks() {
+            if (scanning) return;
+            scanning = true;
+
+            const btn = document.getElementById('btn-scan');
+            const list = document.getElementById('network-list');
+            btn.textContent = 'Scanning...';
+            btn.disabled = true;
+            list.innerHTML = '<div class="network-list-empty">Scanning nearby networks...</div>';
+
+            try {
+                const resp = await fetch('/api/scan-networks');
+                const networks = await resp.json();
+
+                if (networks.length === 0) {
+                    list.innerHTML = '<div class="network-list-empty">No networks found. Make sure WiFi is enabled.</div>';
+                    return;
+                }
+
+                list.innerHTML = networks.map(net => `
+                    <div class="network-item" onclick="selectNetwork('${escapeHtml(net.ssid)}', '${escapeHtml(net.security)}')">
+                        <div class="network-info">
+                            <span class="network-ssid">${escapeHtml(net.ssid)}</span>
+                            <span class="badge ${securityBadgeClass(net.security)}">${net.security}</span>
+                        </div>
+                        <div class="network-meta">
+                            ${net.signal_dbm != null ? signalBars(net.signal_dbm) + ' ' + net.signal_dbm + ' dBm' : ''}
+                            ${net.frequency ? ' &middot; ' + net.frequency + ' MHz' : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                list.innerHTML = '<div class="network-list-empty">Scan failed: ' + e.message + '</div>';
+            } finally {
+                btn.textContent = 'Scan Again';
+                btn.disabled = false;
+                scanning = false;
+            }
+        }
+
+        function selectNetwork(ssid, security) {
+            document.getElementById('ssid-input').value = ssid;
+
+            // Map the detected security to the closest expected option
+            const sel = document.getElementById('security-select');
+            if (security.includes('WPA3') && security.includes('WPA2')) {
+                sel.value = 'WPA2/WPA3';
+            } else if (security.includes('WPA3')) {
+                sel.value = 'WPA3';
+            } else {
+                sel.value = 'WPA2';
+            }
+
+            // Visual feedback
+            document.querySelectorAll('.network-item').forEach(el => el.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+        }
+
+        async function saveConfig() {
+            const ssid = document.getElementById('ssid-input').value.trim();
+            const security = document.getElementById('security-select').value;
+            const interval = parseInt(document.getElementById('interval-input').value) || 60;
+            const msgEl = document.getElementById('save-message');
+
+            if (!ssid) {
+                msgEl.textContent = 'Please enter or select an SSID.';
+                msgEl.className = 'save-message error';
+                msgEl.style.display = 'block';
+                return;
+            }
+
+            const btn = document.getElementById('btn-save');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        target_ssid: ssid,
+                        expected_security: security,
+                        scan_interval: interval,
+                    }),
+                });
+                const result = await resp.json();
+
+                if (resp.ok) {
+                    msgEl.textContent = 'Saved! Redirecting to dashboard...';
+                    msgEl.className = 'save-message success';
+                    msgEl.style.display = 'block';
+                    setTimeout(() => window.location.href = '/', 1500);
+                } else {
+                    msgEl.textContent = result.error || 'Save failed.';
+                    msgEl.className = 'save-message error';
+                    msgEl.style.display = 'block';
+                }
+            } catch (e) {
+                msgEl.textContent = 'Error: ' + e.message;
+                msgEl.className = 'save-message error';
+                msgEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save & Start Monitoring';
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function securityBadgeClass(security) {
+            if (security === 'Open') return 'badge-danger';
+            if (security === 'WEP') return 'badge-danger';
+            if (security.includes('WPA')) return 'badge-ok';
+            return 'badge-warn';
+        }
+
+        function signalBars(dbm) {
+            if (dbm >= -50) return '<span class="signal-bars" title="Excellent">&#9646;&#9646;&#9646;&#9646;</span>';
+            if (dbm >= -60) return '<span class="signal-bars" title="Good">&#9646;&#9646;&#9646;<span class="dim">&#9646;</span></span>';
+            if (dbm >= -70) return '<span class="signal-bars" title="Fair">&#9646;&#9646;<span class="dim">&#9646;&#9646;</span></span>';
+            return '<span class="signal-bars" title="Weak">&#9646;<span class="dim">&#9646;&#9646;&#9646;</span></span>';
+        }
+
+        // Auto-scan on page load
+        scanNetworks();
+    </script>
+</body>
+</html>
