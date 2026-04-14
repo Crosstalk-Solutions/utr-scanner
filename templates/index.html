@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UTR Scanner - WiFi Security Monitor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UTR Scanner</h1>
+            <p class="subtitle">WiFi Security Monitor</p>
+        </header>
+
+        <div class="status-card" id="status-card">
+            <div class="status-indicator" id="status-indicator">
+                <div class="status-dot" id="status-dot"></div>
+                <span class="status-text" id="status-text">Connecting...</span>
+            </div>
+            <div class="status-details">
+                <div class="detail">
+                    <span class="label">Target SSID</span>
+                    <span class="value" id="target-ssid">{{ config.target_ssid }}</span>
+                </div>
+                <div class="detail">
+                    <span class="label">Expected Security</span>
+                    <span class="value" id="expected-security">{{ config.expected_security }}</span>
+                </div>
+                <div class="detail">
+                    <span class="label">Current Security</span>
+                    <span class="value" id="current-security">--</span>
+                </div>
+                <div class="detail">
+                    <span class="label">Last Scan</span>
+                    <span class="value" id="last-scan">--</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-number" id="total-scans">0</div>
+                <div class="stat-label">Total Scans</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-alerts">0</div>
+                <div class="stat-label">Alerts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="uptime">--</div>
+                <div class="stat-label">Monitoring Since</div>
+            </div>
+        </div>
+
+        <div class="alerts-section" id="alerts-section" style="display: none;">
+            <h2>Active Alerts</h2>
+            <div id="alerts-list"></div>
+        </div>
+
+        <div class="log-section">
+            <div class="log-header">
+                <h2>Scan Log</h2>
+                <div class="log-controls">
+                    <button class="btn btn-sm" id="btn-filter-all" onclick="setFilter('all')">All</button>
+                    <button class="btn btn-sm" id="btn-filter-alerts" onclick="setFilter('alerts')">Alerts Only</button>
+                </div>
+            </div>
+            <div class="log-table-wrap">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>SSID</th>
+                            <th>Security</th>
+                            <th>Signal</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-body">
+                        <tr><td colspan="5" class="empty">Loading scan data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="timeline-section">
+            <h2>Security Timeline (Last 24h)</h2>
+            <div class="timeline" id="timeline"></div>
+            <div class="timeline-legend">
+                <span class="legend-item"><span class="legend-dot ok"></span> Secure</span>
+                <span class="legend-item"><span class="legend-dot alert"></span> Insecure</span>
+                <span class="legend-item"><span class="legend-dot missing"></span> Not Found</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+        let allScans = [];
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.getElementById('btn-filter-all').classList.toggle('active', filter === 'all');
+            document.getElementById('btn-filter-alerts').classList.toggle('active', filter === 'alerts');
+            renderLog();
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return '--';
+            const d = new Date(isoString);
+            return d.toLocaleString();
+        }
+
+        function timeAgo(isoString) {
+            if (!isoString) return '--';
+            const now = new Date();
+            const then = new Date(isoString);
+            const seconds = Math.floor((now - then) / 1000);
+            if (seconds < 60) return seconds + 's ago';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            return Math.floor(seconds / 86400) + 'd ago';
+        }
+
+        function securityBadge(security, isAlert) {
+            const cls = isAlert ? 'badge-danger' : (security === 'Not found' ? 'badge-warn' : 'badge-ok');
+            return `<span class="badge ${cls}">${security || 'Unknown'}</span>`;
+        }
+
+        function renderLog() {
+            const tbody = document.getElementById('log-body');
+            let filtered = allScans;
+            if (currentFilter === 'alerts') {
+                filtered = allScans.filter(s => s.is_alert);
+            }
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty">No scan data yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.slice(0, 200).map(scan => `
+                <tr class="${scan.is_alert ? 'row-alert' : ''}">
+                    <td>${formatTime(scan.timestamp)}</td>
+                    <td>${scan.ssid}</td>
+                    <td>${securityBadge(scan.security, scan.is_alert)}</td>
+                    <td>${scan.signal_dbm != null ? scan.signal_dbm + ' dBm' : '--'}</td>
+                    <td>${scan.is_alert ? '<span class="badge badge-danger">ALERT</span>' : '<span class="badge badge-ok">OK</span>'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderTimeline(scans) {
+            const timeline = document.getElementById('timeline');
+            const now = new Date();
+            const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+
+            // Filter to last 24h and bucket into ~5-minute blocks
+            const recent = scans.filter(s => new Date(s.timestamp) >= dayAgo);
+            if (recent.length === 0) {
+                timeline.innerHTML = '<div class="timeline-empty">No data in the last 24 hours</div>';
+                return;
+            }
+
+            const bucketCount = 288; // 24h / 5min
+            const bucketMs = (24 * 60 * 60 * 1000) / bucketCount;
+            const buckets = new Array(bucketCount).fill(null);
+
+            recent.forEach(scan => {
+                const t = new Date(scan.timestamp);
+                const idx = Math.min(Math.floor((t - dayAgo) / bucketMs), bucketCount - 1);
+                if (scan.is_alert) {
+                    buckets[idx] = 'alert';
+                } else if (scan.security === 'Not found') {
+                    if (buckets[idx] !== 'alert') buckets[idx] = 'missing';
+                } else {
+                    if (!buckets[idx]) buckets[idx] = 'ok';
+                }
+            });
+
+            timeline.innerHTML = buckets.map((state, i) => {
+                const cls = state || 'empty';
+                return `<div class="timeline-block ${cls}" title="${state || 'no data'}"></div>`;
+            }).join('');
+        }
+
+        function renderAlerts(alerts) {
+            const section = document.getElementById('alerts-section');
+            const list = document.getElementById('alerts-list');
+
+            if (alerts.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            list.innerHTML = alerts.map(a => `
+                <div class="alert-item">
+                    <div class="alert-info">
+                        <strong>${a.ssid}</strong> detected as
+                        <span class="badge badge-danger">${a.actual_security}</span>
+                        (expected <span class="badge badge-ok">${a.expected_security}</span>)
+                        <span class="alert-time">${formatTime(a.timestamp)}</span>
+                    </div>
+                    <button class="btn btn-sm" onclick="acknowledgeAlert(${a.id})">Dismiss</button>
+                </div>
+            `).join('');
+        }
+
+        async function acknowledgeAlert(id) {
+            await fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST' });
+            refresh();
+        }
+
+        async function refresh() {
+            try {
+                const [scansRes, alertsRes, statsRes] = await Promise.all([
+                    fetch('/api/scans?limit=500'),
+                    fetch('/api/alerts'),
+                    fetch('/api/stats'),
+                ]);
+
+                allScans = await scansRes.json();
+                const alerts = await alertsRes.json();
+                const stats = await statsRes.json();
+                const state = stats.scanner_state || {};
+
+                // Update status card
+                const card = document.getElementById('status-card');
+                const dot = document.getElementById('status-dot');
+                const text = document.getElementById('status-text');
+
+                card.className = 'status-card status-' + (state.status || 'starting');
+                dot.className = 'status-dot ' + (state.status || 'starting');
+
+                const statusLabels = {
+                    'ok': 'Secure',
+                    'alert': 'INSECURE - ALERT',
+                    'scanning': 'Scanning...',
+                    'running': 'Running',
+                    'starting': 'Starting...',
+                    'error': 'Error',
+                };
+                text.textContent = statusLabels[state.status] || state.status;
+
+                document.getElementById('current-security').textContent = state.last_security || '--';
+                document.getElementById('last-scan').textContent = timeAgo(state.last_scan_time);
+                document.getElementById('total-scans').textContent = stats.total_scans || 0;
+                document.getElementById('total-alerts').textContent = stats.total_alerts || 0;
+
+                if (stats.first_scan_time) {
+                    document.getElementById('uptime').textContent = formatTime(stats.first_scan_time);
+                }
+
+                renderLog();
+                renderTimeline(allScans);
+                renderAlerts(alerts);
+
+            } catch (e) {
+                console.error('Refresh error:', e);
+            }
+        }
+
+        // Initial load and auto-refresh
+        setFilter('all');
+        refresh();
+        setInterval(refresh, 10000); // refresh every 10s
+    </script>
+</body>
+</html>
