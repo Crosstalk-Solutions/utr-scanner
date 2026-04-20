@@ -77,6 +77,17 @@ def get_alerts(acknowledged=False):
     return [dict(r) for r in rows]
 
 
+def get_alert_scans(limit=None):
+    conn = get_db()
+    query = "SELECT * FROM scans WHERE is_alert = 1 ORDER BY timestamp ASC"
+    if limit:
+        rows = conn.execute(query + " LIMIT ?", (limit,)).fetchall()
+    else:
+        rows = conn.execute(query).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def acknowledge_alert(alert_id):
     conn = get_db()
     conn.execute("UPDATE alerts SET acknowledged = 1 WHERE id = ?", (alert_id,))

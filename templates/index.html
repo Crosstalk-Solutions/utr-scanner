@@ -14,7 +14,10 @@
                     <h1>UTR Scanner</h1>
                     <p class="subtitle">WiFi Security Monitor</p>
                 </div>
-                <a href="/setup" class="btn btn-sm">Settings</a>
+                <div class="header-actions">
+                    <button class="btn btn-sm" onclick="openExportModal()">Export for Ubiquiti</button>
+                    <a href="/setup" class="btn btn-sm">Settings</a>
+                </div>
             </div>
         </header>
 
@@ -109,9 +112,30 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="exportModal" style="display: none;" onclick="handleExportModalClick(event)">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Export for Ubiquiti</h2>
+                <button class="modal-close" onclick="closeExportModal()" aria-label="Close">&times;</button>
+            </div>
+            <p class="modal-desc">Copy this report and paste it into your Ubiquiti support ticket or community thread. Fill in the [FILL IN] fields with your setup details before submitting.</p>
+            <textarea id="exportReport" class="modal-textarea" readonly placeholder="Loading report..."></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="copyReportBtn" onclick="copyReportToClipboard()">Copy to Clipboard</button>
+                <button class="btn" onclick="closeExportModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentFilter = 'all';
         let allScans = [];
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str == null ? '' : String(str);
+            return div.innerHTML;
+        }
 
         function setFilter(filter) {
             currentFilter = filter;
@@ -139,7 +163,7 @@
 
         function securityBadge(security, isAlert) {
             const cls = isAlert ? 'badge-danger' : (security === 'Not found' ? 'badge-warn' : 'badge-ok');
-            return `<span class="badge ${cls}">${security || 'Unknown'}</span>`;
+            return `<span class="badge ${cls}">${escapeHtml(security || 'Unknown')}</span>`;
         }
 
         function renderLog() {
@@ -156,10 +180,10 @@
 
             tbody.innerHTML = filtered.slice(0, 200).map(scan => `
                 <tr class="${scan.is_alert ? 'row-alert' : ''}">
-                    <td>${formatTime(scan.timestamp)}</td>
-                    <td>${scan.ssid}</td>
+                    <td>${escapeHtml(formatTime(scan.timestamp))}</td>
+                    <td>${escapeHtml(scan.ssid)}</td>
                     <td>${securityBadge(scan.security, scan.is_alert)}</td>
-                    <td>${scan.signal_dbm != null ? scan.signal_dbm + ' dBm' : '--'}</td>
+                    <td>${scan.signal_dbm != null ? escapeHtml(scan.signal_dbm + ' dBm') : '--'}</td>
                     <td>${scan.is_alert ? '<span class="badge badge-danger">ALERT</span>' : '<span class="badge badge-ok">OK</span>'}</td>
                 </tr>
             `).join('');
@@ -212,10 +236,10 @@
             list.innerHTML = alerts.map(a => `
                 <div class="alert-item">
                     <div class="alert-info">
-                        <strong>${a.ssid}</strong> detected as
-                        <span class="badge badge-danger">${a.actual_security}</span>
-                        (expected <span class="badge badge-ok">${a.expected_security}</span>)
-                        <span class="alert-time">${formatTime(a.timestamp)}</span>
+                        <strong>${escapeHtml(a.ssid)}</strong> detected as
+                        <span class="badge badge-danger">${escapeHtml(a.actual_security)}</span>
+                        (expected <span class="badge badge-ok">${escapeHtml(a.expected_security)}</span>)
+                        <span class="alert-time">${escapeHtml(formatTime(a.timestamp))}</span>
                     </div>
                     <button class="btn btn-sm" onclick="acknowledgeAlert(${a.id})">Dismiss</button>
                 </div>
@@ -275,6 +299,48 @@
             } catch (e) {
                 console.error('Refresh error:', e);
             }
+        }
+
+        async function openExportModal() {
+            const modal = document.getElementById('exportModal');
+            const textarea = document.getElementById('exportReport');
+            textarea.value = 'Loading report...';
+            modal.style.display = 'flex';
+            try {
+                const res = await fetch('/api/export-report');
+                const data = await res.json();
+                textarea.value = data.report || '(report generation failed)';
+            } catch (e) {
+                textarea.value = 'Error loading report: ' + e.message;
+            }
+        }
+
+        function closeExportModal() {
+            document.getElementById('exportModal').style.display = 'none';
+            const btn = document.getElementById('copyReportBtn');
+            if (btn) btn.textContent = 'Copy to Clipboard';
+        }
+
+        function handleExportModalClick(event) {
+            if (event.target.id === 'exportModal') {
+                closeExportModal();
+            }
+        }
+
+        async function copyReportToClipboard() {
+            const textarea = document.getElementById('exportReport');
+            const btn = document.getElementById('copyReportBtn');
+            try {
+                await navigator.clipboard.writeText(textarea.value);
+            } catch (e) {
+                textarea.removeAttribute('readonly');
+                textarea.select();
+                document.execCommand('copy');
+                textarea.setAttribute('readonly', '');
+                window.getSelection().removeAllRanges();
+            }
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2000);
         }
 
         // Initial load and auto-refresh
