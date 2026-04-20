@@ -26,11 +26,11 @@ if [[ $EUID -ne 0 ]]; then
     exec sudo bash "$0" "$@"
 fi
 
-echo "[1/6] Installing system dependencies..."
+echo "[1/7] Installing system dependencies..."
 apt-get update -qq
 apt-get install -y -qq python3 python3-pip python3-venv iw wireless-tools rfkill git > /dev/null
 
-echo "[2/6] Setting up UTR Scanner..."
+echo "[2/7] Setting up UTR Scanner..."
 if [[ -d "$APP_DIR" ]] && [[ -d "$APP_DIR/.git" ]]; then
     echo "  Existing git installation found, updating..."
     cd "$APP_DIR"
@@ -42,7 +42,7 @@ else
 fi
 cd "$APP_DIR"
 
-echo "[3/6] Setting up Python environment..."
+echo "[3/7] Setting up Python environment..."
 python3 -m venv venv
 ./venv/bin/pip install --quiet --upgrade pip
 ./venv/bin/pip install --quiet -r requirements.txt

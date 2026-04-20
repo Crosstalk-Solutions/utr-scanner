@@ -17,6 +17,10 @@ Multiple users have confirmed the issue. It appears intermittent and difficult t
 - Supports alerts via webhook (Slack/Discord), Pushover, or audible beep
 - Starts automatically on boot — plug in the Pi and forget about it
 
+## Security Note
+
+The dashboard is intended for use on a trusted local network. It has no authentication — anyone who can reach `http://<pi-ip>:8585` can view the scan data and change the target SSID. Don't expose it to the public internet, and don't run it on untrusted networks (coffee shops, conferences, etc.).
+
 ## Requirements
 
 - **Raspberry Pi** (any model with WiFi — tested on Pi 5 with Debian Trixie/Bookworm)
