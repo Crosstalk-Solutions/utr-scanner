@@ -2,6 +2,8 @@
 
 A lightweight Raspberry Pi tool that continuously monitors a WiFi SSID's security level and alerts you if it drops from WPA2/WPA3 to an open or insecure state.
 
+![UTR Scanner dashboard](docs/dashboard.png)
+
 ## Why Does This Exist?
 
 There's a [reported bug](https://community.ui.com/questions/UniFi-Travel-Router-Unsecure-WiFi/83fa9d26-d929-4623-aba8-90048eb813fe) in the UniFi Travel Router (UTR) where the device periodically broadcasts a configured WPA2 network as an **open, unsecured network** — giving anyone in range direct access to your home network via the Teleport tunnel.
